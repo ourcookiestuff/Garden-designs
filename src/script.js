@@ -8,7 +8,7 @@ const dpr = window.devicePixelRatio || 1;
 let widthMeters = 60;
 let heightMeters = 50;
 
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); } // ograniczanie wartości do przedziału
 
 function resizeCanvas() {
   widthMeters = clamp(Number(document.getElementById("widthInput").value), 10, 75);
@@ -26,10 +26,11 @@ function resizeCanvas() {
   canvas.style.width = widthPx + "px";
   canvas.style.height = heightPx + "px";
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // rysowanie w normalnej skali
   ctx.clearRect(0, 0, widthPx, heightPx);
 }
 
+// nasłuchiwanie zmian rozmiaru
 ["click","keypress","change","input"].forEach(ev=>{
   document.getElementById("widthInput").addEventListener(ev, resizeCanvas);
   document.getElementById("heightInput").addEventListener(ev, resizeCanvas);
@@ -49,7 +50,6 @@ function readParamsFromUI() {
 /*
 GRAMATYKA:
 GARDEN → AREA + PATH_SYSTEM
-GARDEN → CENTRAL_PLAZA + 4×AREA + PATH_SYSTEM (wariant 2)
 
 AREA (depth>0) → AREA + AREA (podział)
 AREA (depth=0) → GRASS_RECT
@@ -62,6 +62,7 @@ FLOWER_AREA → GRASS_RECT + FOUNTAIN + 4×TULIP_BED
 
 PATH_SYSTEM → n×PATH_RECT (z granic stref)
 */
+// etykiety wezłów
 const Label = {
   // nieterminale
   GARDEN: "GARDEN",
@@ -87,7 +88,7 @@ function isNonterminal(l) { return NONTERMINALS.has(l); }
 
 class Graph {
   constructor() {
-    this.nodes = new Map(); // wierzchołki: id -> {id, label, attrs}
+    this.nodes = new Map(); // wierzchołki: id -> {id, label, attrs}, unikalne id, typ i dane geometryczne
     this.edges = []; // krawędzie: {a, b, type}
     this._id = 1; 
   }
@@ -102,10 +103,10 @@ class Graph {
     this.edges = this.edges.filter(e => e.a !== id && e.b !== id);
   }
   listNodes() { return [...this.nodes.values()]; }
-  addEdge(a,b,type="rel", attrs=null){
-  const e = {a,b,type, ...(attrs ? attrs : {})};
-  this.edges.push(e);
-  return e;
+  addEdge(a,b,type="rel", attrs=null) {
+    const e = {a,b,type, ...(attrs ? attrs : {})};
+    this.edges.push(e);
+    return e;
   }
 }
 
@@ -113,8 +114,8 @@ function rebuildAdjacencyEdges(g, thickness = 10) {
   // 1) usuń stare adjacent (żeby nie dublować)
   g.edges = g.edges.filter(e => e.type !== "adjacent");
 
-  // 2) zbierz węzły-sektory (czyli końcowe prostokąty terenu)
-  // u Ciebie sektorami są te węzły które mają attrs {x,y,w,h} i nie są PATH_SYSTEM
+  // 2) zbieranie końcowych prostokątów terenu
+  // (te węzły które mają attrs {x,y,w,h} i nie są PATH_SYSTEM)
   const sectorLabels = new Set([
     Label.AREA, Label.GRASS_RECT, Label.FLOWER_AREA
   ]);
@@ -127,28 +128,28 @@ function rebuildAdjacencyEdges(g, thickness = 10) {
   }
 
   function borderBetweenRects(A, B) {
-    const ax2 = A.x + A.w, ay2 = A.y + A.h;
-    const bx2 = B.x + B.w, by2 = B.y + B.h;
+    const ax2 = A.x + A.w, ay2 = A.y + A.h; // prawa i dolna krawędź A
+    const bx2 = B.x + B.w, by2 = B.y + B.h; // prawa i dolna krawędź B
 
     // B po prawej A
     if (Math.abs(ax2 - B.x) < EPS) {
       const ov = overlapLen(A.y, ay2, B.y, by2);
-      if (ov > 5) return snapRect10({ x: ax2 - thickness/2, y: Math.max(A.y, B.y), w: thickness, h: ov });
+      if (ov > 4) return snapRect10({ x: ax2 - thickness/2, y: Math.max(A.y, B.y), w: thickness, h: ov });
     }
     // B po lewej A
     if (Math.abs(bx2 - A.x) < EPS) {
       const ov = overlapLen(A.y, ay2, B.y, by2);
-      if (ov > 5) return snapRect10({ x: A.x - thickness/2, y: Math.max(A.y, B.y), w: thickness, h: ov });
+      if (ov > 4) return snapRect10({ x: A.x - thickness/2, y: Math.max(A.y, B.y), w: thickness, h: ov });
     }
     // B pod A
     if (Math.abs(ay2 - B.y) < EPS) {
       const ov = overlapLen(A.x, ax2, B.x, bx2);
-      if (ov > 5) return snapRect10({ x: Math.max(A.x, B.x), y: ay2 - thickness/2, w: ov, h: thickness });
+      if (ov > 4) return snapRect10({ x: Math.max(A.x, B.x), y: ay2 - thickness/2, w: ov, h: thickness });
     }
     // B nad A
     if (Math.abs(by2 - A.y) < EPS) {
       const ov = overlapLen(A.x, ax2, B.x, bx2);
-      if (ov > 5) return snapRect10({ x: Math.max(A.x, B.x), y: A.y - thickness/2, w: ov, h: thickness });
+      if (ov > 4) return snapRect10({ x: Math.max(A.x, B.x), y: A.y - thickness/2, w: ov, h: thickness });
     }
 
     return null;
@@ -163,8 +164,8 @@ function rebuildAdjacencyEdges(g, thickness = 10) {
       const border = borderBetweenRects(A, B);
       if (!border) continue;
 
-      const len = Math.max(border.w, border.h);
-      if (len < 20) continue;
+      // const len = Math.max(border.w, border.h);
+      // if (len < 5) continue;
 
       // dodaj krawędzie w obie strony
       g.addEdge(sectors[i].id, sectors[j].id, "adjacent", { border });
@@ -173,8 +174,8 @@ function rebuildAdjacencyEdges(g, thickness = 10) {
   }
 }
 
-function pick(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
-function randInt(a,b) { return a + Math.floor(Math.random()*(b-a+1)); }
+function pick(arr) { return arr[Math.floor(Math.random()*arr.length)]; } // losowy wybór z tablicy
+function randInt(a,b) { return a + Math.floor(Math.random()*(b-a+1)); } // losowa liczba całkowita z przedziału [a,b]
 
 // Dzielenie prostokątów
 function splitRect(rect, mode) {
@@ -198,6 +199,7 @@ function splitRect(rect, mode) {
   return [{x,y,w,h:h*0.4},{x,y:y+h*0.4,w,h:h*0.6}]; // POZIOMO 40/60
 }
 
+// zaokrąglanie prostokątów do 10, by było równo
 function snapRect10(r){
   return {
     x: Math.round(r.x/10)*10,
@@ -274,7 +276,7 @@ const productions = {
       // Dodanie dwóch nowych wierzchołków
       const areaId = g.addNode(Label.AREA, {...R, depth: params.divisions});
       const pathId = g.addNode(Label.PATH_SYSTEM, {...R, intensity: params.paths});
-      g.addEdge(areaId, pathId, "contains");
+      //g.addEdge(areaId, pathId, "contains");
     }
   ],
 
@@ -395,7 +397,7 @@ const productions = {
 
           // 20 prób znalezienia dobrego miejsca
           for (let t=0;t<20 && !ok;t++) {
-            const rr = 25 + randInt(-6, 12);  // promie 19-37
+            const rr = 25 + randInt(-6, 12);  // promień 19-37
             const x = R.x + randInt(rr, Math.max(rr, Math.floor(R.w - rr)));
             const y = R.y + randInt(rr, Math.max(rr, Math.floor(R.h - rr)));
             const c = {x,y,r:rr};
@@ -736,7 +738,7 @@ function resetEngine() {
 
 function generateFull() {
   resetEngine();
-  engine.run(1500);
+  engine.run(100);
   render(engine);
 }
 
